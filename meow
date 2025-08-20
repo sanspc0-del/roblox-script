@@ -1,0 +1,37 @@
+local CONFIG = {
+    remotePatterns = { "trade","give","offer","gift","transfer","item","inventory","exchange" },
+    minCooldown = 0.35, maxCooldown = 2.5, cooldownStepUp = 0.15, cooldownStepDown = 0.08,
+    perRemoteBucket = true, requireConsentForTools = true, consentKey = Enum.KeyCode.E,
+    consentWindow = 0.6, autoUnequipIfForced = true, quarantineFolderName = "_ClientQuarantine",
+    antiTeleport = true, maxJumpDelta = 14, visualLoadGuard = true, emitterCap = 120,
+    reenableAfter = 3, verbose = false,
+}
+
+local Players,RS,RunService,UIS = game:GetService("Players"),game:GetService("ReplicatedStorage"),game:GetService("RunService"),game:GetService("UserInputService")
+local player = Players.LocalPlayer
+local consentUntil = 0
+UIS.InputBegan:Connect(function(i,gp) if not gp and i.KeyCode==CONFIG.consentKey then consentUntil=tick()+CONFIG.consentWindow end end)
+local quarantineFolder = Instance.new("Folder") quarantineFolder.Name=CONFIG.quarantineFolderName quarantineFolder.Parent=player:WaitForChild("PlayerGui")
+local function toolIsForced() return tick()>consentUntil end
+local function quarantineTool(t) if not t:IsA("Tool") then return end t.Parent=quarantineFolder task.delay(4,function() if t.Parent==quarantineFolder then t.Parent=workspace end end) end
+local function onToolAdded(c,t) if t:IsA("Tool") and toolIsForced() then if CONFIG.autoUnequipIfForced then local h=player.Character and player.Character:FindFirstChildOfClass("Humanoid") if h then pcall(function()h:UnequipTools()end) end end quarantineTool(t) end end
+local function hookToolGuards() local c=player.Character or player.CharacterAdded:Wait() local b=player:WaitForChild("Backpack") b.ChildAdded:Connect(function(x)onToolAdded(b,x)end) c.ChildAdded:Connect(function(x)onToolAdded(c,x)end) end
+
+local RemoteShield={buckets={}}
+function RemoteShield:_getKeyFor(i) return CONFIG.perRemoteBucket and tostring(i:GetDebugId(0)) or string.lower(i.Name) end
+function RemoteShield:_checkAndUpdate(k) local now=tick() local b=self.buckets[k] if not b then b={lastTick=0,cool=CONFIG.minCooldown}self.buckets[k]=b end local dt=now-b.lastTick if dt<b.cool then b.cool=math.min(b.cool+CONFIG.cooldownStepUp,CONFIG.maxCooldown) return false else b.cool=math.max(CONFIG.minCooldown,b.cool-CONFIG.cooldownStepDown) b.lastTick=now return true end end
+local function looksLikeTrade(n) n=string.lower(n) for _,p in ipairs(CONFIG.remotePatterns)do if n:find(p,1,true)then return true end end end
+local function hookRemote(i) if i:IsA("RemoteEvent")then i.OnClientEvent:Connect(function(...) if looksLikeTrade(i.Name) then local k=RemoteShield:_getKeyFor(i) if not RemoteShield:_checkAndUpdate(k) then return end end end) elseif i:IsA("RemoteFunction")and looksLikeTrade(i.Name) then i.OnClientInvoke=function(...) local k=RemoteShield:_getKeyFor(i) if not RemoteShield:_checkAndUpdate(k) then return{accepted=false} end return{accepted=false} end end end
+local function scanRemotes() for _,d in ipairs(RS:GetDescendants())do if d:IsA("RemoteEvent")or d:IsA("RemoteFunction")then hookRemote(d)end end RS.DescendantAdded:Connect(function(d) if d:IsA("RemoteEvent")or d:IsA("RemoteFunction")then hookRemote(d)end end) end
+
+local lastSafeCFrame
+local function hookAntiTeleport() if not CONFIG.antiTeleport then return end local c=player.Character or player.CharacterAdded:Wait() local hrp=c:WaitForChild("HumanoidRootPart") lastSafeCFrame=hrp.CFrame RunService.Heartbeat:Connect(function() local d=(hrp.Position-lastSafeCFrame.Position).Magnitude if d>CONFIG.maxJumpDelta then hrp.CFrame=lastSafeCFrame else lastSafeCFrame=hrp.CFrame end end) end
+
+local disabledBucket,reenableAt={},0
+local function countEmitters() if not CONFIG.visualLoadGuard then return end local tot,toDis=0,{} for _,d in ipairs(workspace:GetDescendants())do if d:IsA("ParticleEmitter")and d.Enabled and d.Rate>5 then tot+=1 if tot>CONFIG.emitterCap then table.insert(toDis,d)end elseif (d:IsA("Trail")or d:IsA("Beam"))and d.Enabled then tot+=1 if tot>CONFIG.emitterCap then table.insert(toDis,d)end elseif d:IsA("Sound")and d.IsPlaying and d.PlaybackLoudness>220 then table.insert(toDis,d)end end end if #toDis>0 then for _,o in ipairs(toDis)do pcall(function()if o:IsA("Sound")then o:Stop()else o.Enabled=false end table.insert(disabledBucket,o)end)end reenableAt=tick()+CONFIG.reenableAfter end end
+local function tryReenable() if reenableAt~=0 and tick()>=reenableAt then for _,o in ipairs(disabledBucket)do pcall(function()if o and o.Parent and not o:IsA("Sound")then o.Enabled=true end end)end disabledBucket,reenableAt={},0 end end
+RunService.Heartbeat:Connect(function() countEmitters() tryReenable() end)
+
+local function init() hookToolGuards() scanRemotes() hookAntiTeleport() end
+player.CharacterAdded:Connect(function() task.wait(0.5) hookToolGuards() hookAntiTeleport() end)
+init()
