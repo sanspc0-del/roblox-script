@@ -5,8 +5,7 @@ local player = Players.LocalPlayer
 local savedCFrame = nil
 local moving = false
 local stepCFrame = nil
-local speedMultiplier = 8000 -- أقوى سرعة
-local updateDelay = 0 -- تحديث فوري كل Heartbeat
+local speedMultiplier = 20 -- السرعة الافتراضية
 local bookmarks = {}
 
 -- GUI
@@ -14,7 +13,7 @@ local screenGui = Instance.new("ScreenGui")
 screenGui.ResetOnSpawn = false
 screenGui.Parent = player:WaitForChild("PlayerGui")
 
--- شاشة الحقوق المزخرفة
+-- شاشة الحقوق
 local creditLabel = Instance.new("TextLabel")
 creditLabel.Size = UDim2.new(0,400,0,100)
 creditLabel.Position = UDim2.new(0.5,-200,0.5,-50)
@@ -29,8 +28,8 @@ task.delay(4, function()
 	creditLabel:Destroy()
 
 	local frame = Instance.new("Frame")
-	frame.Size = UDim2.new(0,250,0,220)
-	frame.Position = UDim2.new(1,-260,0.5,-110)
+	frame.Size = UDim2.new(0,250,0,260)
+	frame.Position = UDim2.new(1,-260,0.5,-130)
 	frame.BackgroundColor3 = Color3.fromRGB(20,20,20)
 	frame.BorderSizePixel = 0
 	frame.Parent = screenGui
@@ -40,7 +39,7 @@ task.delay(4, function()
 	corner.Parent = frame
 
 	local saveBtn = Instance.new("TextButton")
-	saveBtn.Size = UDim2.new(1,-10,0,70)
+	saveBtn.Size = UDim2.new(1,-10,0,50)
 	saveBtn.Position = UDim2.new(0,5,0,5)
 	saveBtn.BackgroundColor3 = Color3.fromRGB(70,70,70)
 	saveBtn.Text = "حفظ المكان"
@@ -50,8 +49,8 @@ task.delay(4, function()
 	saveBtn.Parent = frame
 
 	local tpBtn = Instance.new("TextButton")
-	tpBtn.Size = UDim2.new(1,-10,0,70)
-	tpBtn.Position = UDim2.new(0,5,0,85)
+	tpBtn.Size = UDim2.new(1,-10,0,50)
+	tpBtn.Position = UDim2.new(0,5,0,60)
 	tpBtn.BackgroundColor3 = Color3.fromRGB(70,70,70)
 	tpBtn.Text = "اذهب للمكان"
 	tpBtn.TextScaled = true
@@ -61,7 +60,7 @@ task.delay(4, function()
 
 	local distanceLabel = Instance.new("TextLabel")
 	distanceLabel.Size = UDim2.new(1,-10,0,30)
-	distanceLabel.Position = UDim2.new(0,5,0,165)
+	distanceLabel.Position = UDim2.new(0,5,0,115)
 	distanceLabel.BackgroundTransparency = 1
 	distanceLabel.TextColor3 = Color3.fromRGB(0,255,0)
 	distanceLabel.TextScaled = true
@@ -69,16 +68,55 @@ task.delay(4, function()
 	distanceLabel.Text = "Distance: 0"
 	distanceLabel.Parent = frame
 
-	local speedBar = Instance.new("Frame")
-	speedBar.Size = UDim2.new(0.8,0,0,10)
-	speedBar.Position = UDim2.new(0.1,0,0,200)
-	speedBar.BackgroundColor3 = Color3.fromRGB(100,100,100)
-	speedBar.Parent = frame
-	local fill = Instance.new("Frame")
-	fill.Size = UDim2.new(1,0,1,0)
-	fill.BackgroundColor3 = Color3.fromRGB(0,255,255)
-	fill.Parent = speedBar
+	-- تحكم السرعة
+	local speedLabel = Instance.new("TextLabel")
+	speedLabel.Size = UDim2.new(1,-10,0,30)
+	speedLabel.Position = UDim2.new(0,5,0,150)
+	speedLabel.BackgroundTransparency = 1
+	speedLabel.TextColor3 = Color3.fromRGB(255,255,0)
+	speedLabel.TextScaled = true
+	speedLabel.Font = Enum.Font.GothamBold
+	speedLabel.Text = "Speed: "..speedMultiplier
+	speedLabel.Parent = frame
 
+	local plusBtn = Instance.new("TextButton")
+	plusBtn.Size = UDim2.new(0.45,0,0,30)
+	plusBtn.Position = UDim2.new(0.05,0,0,185)
+	plusBtn.BackgroundColor3 = Color3.fromRGB(50,100,50)
+	plusBtn.Text = "+ زيادة"
+	plusBtn.TextScaled = true
+	plusBtn.TextColor3 = Color3.new(1,1,1)
+	plusBtn.Font = Enum.Font.GothamBold
+	plusBtn.Parent = frame
+
+	local minusBtn = Instance.new("TextButton")
+	minusBtn.Size = UDim2.new(0.45,0,0,30)
+	minusBtn.Position = UDim2.new(0.5,0,0,185)
+	minusBtn.BackgroundColor3 = Color3.fromRGB(100,50,50)
+	minusBtn.Text = "- تقليل"
+	minusBtn.TextScaled = true
+	minusBtn.TextColor3 = Color3.new(1,1,1)
+	minusBtn.Font = Enum.Font.GothamBold
+	minusBtn.Parent = frame
+
+	-- وظائف السرعة
+	local function updateSpeedLabel()
+		speedLabel.Text = "Speed: "..speedMultiplier
+	end
+
+	plusBtn.MouseButton1Click:Connect(function()
+		speedMultiplier = speedMultiplier + 100
+		updateSpeedLabel()
+	end)
+
+	minusBtn.MouseButton1Click:Connect(function()
+		if speedMultiplier > 100 then
+			speedMultiplier = speedMultiplier - 100
+			updateSpeedLabel()
+		end
+	end)
+
+	-- حفظ المكان
 	local function savePos()
 		if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
 			savedCFrame = player.Character.HumanoidRootPart.CFrame
@@ -88,6 +126,7 @@ task.delay(4, function()
 		end
 	end
 
+	-- المشي القسري (انميشن)
 	local function insaneForceTeleport(duration)
 		if not savedCFrame then return end
 		local char = player.Character
@@ -107,7 +146,6 @@ task.delay(4, function()
 				return
 			end
 
-			-- تحديد المكان خطوة بخطوة بسرعة جنونية
 			local targetPos = savedCFrame.Position
 			local currentPos = hrp.Position
 			local dir = targetPos - currentPos
@@ -117,7 +155,6 @@ task.delay(4, function()
 				stepCFrame = nextStep
 			end
 
-			-- تثبيت client-side ضد أي سيرفر
 			hrp.CFrame = stepCFrame
 			pcall(function() hrp.Velocity = Vector3.new(0,0,0) end)
 			pcall(function() hrp.AssemblyLinearVelocity = Vector3.new(0,0,0) end)
@@ -130,8 +167,7 @@ task.delay(4, function()
 			pcall(function() hrp:SetNetworkOwner(player) end)
 
 			local lookAt = CFrame.new(hrp.Position, targetPos + Vector3.new(0,0.5,0))
-			local finalCFrame = lookAt * CFrame.Angles(math.rad(180),0,0)
-			hrp.CFrame = finalCFrame
+			hrp.CFrame = lookAt
 
 			distanceLabel.Text = ("Distance: %.2f"):format((targetPos - currentPos).Magnitude)
 		end)
