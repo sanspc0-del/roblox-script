@@ -1,0 +1,147 @@
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local player = Players.LocalPlayer
+
+local savedCFrame = nil
+local moving = false
+local stepCFrame = nil
+local speedMultiplier = 8000 -- أقوى سرعة
+local updateDelay = 0 -- تحديث فوري كل Heartbeat
+local bookmarks = {}
+
+-- GUI
+local screenGui = Instance.new("ScreenGui")
+screenGui.ResetOnSpawn = false
+screenGui.Parent = player:WaitForChild("PlayerGui")
+
+-- شاشة الحقوق المزخرفة
+local creditLabel = Instance.new("TextLabel")
+creditLabel.Size = UDim2.new(0,400,0,100)
+creditLabel.Position = UDim2.new(0.5,-200,0.5,-50)
+creditLabel.BackgroundTransparency = 1
+creditLabel.TextColor3 = Color3.fromRGB(255,0,255)
+creditLabel.TextScaled = true
+creditLabel.Font = Enum.Font.Bangers
+creditLabel.Text = "✨ gaster999_cool ✨"
+creditLabel.Parent = screenGui
+
+task.delay(4, function()
+	creditLabel:Destroy()
+
+	local frame = Instance.new("Frame")
+	frame.Size = UDim2.new(0,250,0,220)
+	frame.Position = UDim2.new(1,-260,0.5,-110)
+	frame.BackgroundColor3 = Color3.fromRGB(20,20,20)
+	frame.BorderSizePixel = 0
+	frame.Parent = screenGui
+
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0,12)
+	corner.Parent = frame
+
+	local saveBtn = Instance.new("TextButton")
+	saveBtn.Size = UDim2.new(1,-10,0,70)
+	saveBtn.Position = UDim2.new(0,5,0,5)
+	saveBtn.BackgroundColor3 = Color3.fromRGB(70,70,70)
+	saveBtn.Text = "حفظ المكان"
+	saveBtn.TextScaled = true
+	saveBtn.TextColor3 = Color3.new(1,1,1)
+	saveBtn.Font = Enum.Font.GothamBold
+	saveBtn.Parent = frame
+
+	local tpBtn = Instance.new("TextButton")
+	tpBtn.Size = UDim2.new(1,-10,0,70)
+	tpBtn.Position = UDim2.new(0,5,0,85)
+	tpBtn.BackgroundColor3 = Color3.fromRGB(70,70,70)
+	tpBtn.Text = "اذهب للمكان"
+	tpBtn.TextScaled = true
+	tpBtn.TextColor3 = Color3.new(1,1,1)
+	tpBtn.Font = Enum.Font.GothamBold
+	tpBtn.Parent = frame
+
+	local distanceLabel = Instance.new("TextLabel")
+	distanceLabel.Size = UDim2.new(1,-10,0,30)
+	distanceLabel.Position = UDim2.new(0,5,0,165)
+	distanceLabel.BackgroundTransparency = 1
+	distanceLabel.TextColor3 = Color3.fromRGB(0,255,0)
+	distanceLabel.TextScaled = true
+	distanceLabel.Font = Enum.Font.GothamBold
+	distanceLabel.Text = "Distance: 0"
+	distanceLabel.Parent = frame
+
+	local speedBar = Instance.new("Frame")
+	speedBar.Size = UDim2.new(0.8,0,0,10)
+	speedBar.Position = UDim2.new(0.1,0,0,200)
+	speedBar.BackgroundColor3 = Color3.fromRGB(100,100,100)
+	speedBar.Parent = frame
+	local fill = Instance.new("Frame")
+	fill.Size = UDim2.new(1,0,1,0)
+	fill.BackgroundColor3 = Color3.fromRGB(0,255,255)
+	fill.Parent = speedBar
+
+	local function savePos()
+		if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+			savedCFrame = player.Character.HumanoidRootPart.CFrame
+			stepCFrame = savedCFrame
+			table.insert(bookmarks, savedCFrame)
+			print("✅ المكان محفوظ")
+		end
+	end
+
+	local function insaneForceTeleport(duration)
+		if not savedCFrame then return end
+		local char = player.Character
+		if not char or not char:FindFirstChild("HumanoidRootPart") then return end
+		local hrp = char.HumanoidRootPart
+		local hum = char:FindFirstChildOfClass("Humanoid")
+		moving = true
+		local startTime = tick()
+
+		local conn
+		conn = RunService.Heartbeat:Connect(function(dt)
+			if not moving or tick() - startTime > duration then
+				moving = false
+				conn:Disconnect()
+				if hum then hum.PlatformStand = false hum.AutoRotate = true end
+				print("🛑 انتهت فترة التثبيت 10 ثواني")
+				return
+			end
+
+			-- تحديد المكان خطوة بخطوة بسرعة جنونية
+			local targetPos = savedCFrame.Position
+			local currentPos = hrp.Position
+			local dir = targetPos - currentPos
+			local stepSize = math.min(speedMultiplier*dt, dir.Magnitude)
+			if stepSize > 0 then
+				local nextStep = CFrame.new(currentPos + dir.Unit*stepSize, targetPos + Vector3.new(0,0.5,0))
+				stepCFrame = nextStep
+			end
+
+			-- تثبيت client-side ضد أي سيرفر
+			hrp.CFrame = stepCFrame
+			pcall(function() hrp.Velocity = Vector3.new(0,0,0) end)
+			pcall(function() hrp.AssemblyLinearVelocity = Vector3.new(0,0,0) end)
+			if hum then
+				hum.PlatformStand = true
+				hum.AutoRotate = false
+				pcall(function() hum:ChangeState(Enum.HumanoidStateType.Physics) end)
+			end
+			pcall(function() hrp.CanCollide = false end)
+			pcall(function() hrp:SetNetworkOwner(player) end)
+
+			local lookAt = CFrame.new(hrp.Position, targetPos + Vector3.new(0,0.5,0))
+			local finalCFrame = lookAt * CFrame.Angles(math.rad(180),0,0)
+			hrp.CFrame = finalCFrame
+
+			distanceLabel.Text = ("Distance: %.2f"):format((targetPos - currentPos).Magnitude)
+		end)
+	end
+
+	saveBtn.MouseButton1Click:Connect(savePos)
+	tpBtn.MouseButton1Click:Connect(function() insaneForceTeleport(10) end)
+
+	player:GetMouse().KeyDown:Connect(function(key)
+		if key == "n" then savePos() end
+		if key == "m" then insaneForceTeleport(10) end
+	end)
+end)
