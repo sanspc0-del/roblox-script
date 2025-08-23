@@ -1,0 +1,205 @@
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+
+local player = Players.LocalPlayer
+while not player do
+	task.wait()
+	player = Players.LocalPlayer
+end
+
+local function disconnectAll(connections)
+	for _, c in ipairs(connections) do
+		if typeof(c) == "RBXScriptConnection" and c.Connected then
+			c:Disconnect()
+		end
+	end
+	table.clear(connections)
+end
+
+local function createStatusGui()
+	local screenGui = Instance.new("ScreenGui")
+	screenGui.Name = "NoclipStatusGui"
+	screenGui.ResetOnSpawn = false
+	screenGui.IgnoreGuiInset = true
+	screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+	screenGui.Parent = player:WaitForChild("PlayerGui")
+
+	local label = Instance.new("TextLabel")
+	label.Name = "StatusLabel"
+	label.Size = UDim2.new(0, 220, 0, 28)
+	label.AnchorPoint = Vector2.new(0.5, 0)
+	label.Position = UDim2.new(0.5, 0, 0, 8)
+	label.BackgroundTransparency = 0.25
+	label.Text = "Noclip: OFF"
+	label.Font = Enum.Font.GothamBold
+	label.TextScaled = true
+	label.TextColor3 = Color3.new(1, 1, 1)
+	label.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+	label.BorderSizePixel = 0
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 8)
+	corner.Parent = label
+
+	return screenGui, label
+end
+
+local function setLabel(label, isOn)
+	if label then
+		label.Text = isOn and "Noclip: ON" or "Noclip: OFF"
+	end
+end
+
+local function isTyping()
+	return UserInputService:GetFocusedTextBox() ~= nil
+end
+
+local function attachToCharacter(character)
+	local humanoid = character:WaitForChild("Humanoid", 10)
+	local hrp = character:WaitForChild("HumanoidRootPart", 10)
+	if not humanoid or not hrp then
+		warn("[Noclip] Missing Humanoid/HRP.")
+		return
+	end
+
+	local statusGui = player:FindFirstChildOfClass("PlayerGui") and player.PlayerGui:FindFirstChild("NoclipStatusGui")
+	local label
+	if statusGui and statusGui:FindFirstChild("StatusLabel") then
+		label = statusGui.StatusLabel
+	else
+		local g, l = createStatusGui()
+		statusGui, label = g, l
+	end
+
+	local noclipOn = false
+	local originalCollide = {} :: {[BasePart]: boolean}
+	local connections = {}
+	local steppedConn
+
+	local function stepForce()
+		for _, desc in ipairs(character:GetDescendants()) do
+			if desc:IsA("BasePart") then
+				if originalCollide[desc] == nil then
+					originalCollide[desc] = desc.CanCollide
+				end
+				desc.CanCollide = false
+			end
+		end
+	end
+
+	local function onDescendantAdded(desc)
+		if noclipOn and desc:IsA("BasePart") then
+			if originalCollide[desc] == nil then
+				originalCollide[desc] = desc.CanCollide
+			end
+			desc.CanCollide = false
+		end
+	end
+
+	local function enforceNoTools(tool)
+		if humanoid then
+			humanoid:UnequipTools()
+		end
+		if tool and tool:IsA("Tool") then
+			table.insert(connections, tool.AncestryChanged:Connect(function(_, parent)
+				if noclipOn and parent == character then
+					local backpack = player:FindFirstChildOfClass("Backpack")
+					if backpack then
+						tool.Parent = backpack
+					end
+				end
+			end))
+			table.insert(connections, tool.Equipped:Connect(function()
+				if noclipOn and humanoid then
+					humanoid:UnequipTools()
+				end
+			end))
+		end
+	end
+
+	local function setNoclip(state: boolean)
+		if state == noclipOn then return end
+		noclipOn = state
+		setLabel(label, noclipOn)
+		print(noclipOn and "[Noclip] ON" or "[Noclip] OFF")
+
+		if noclipOn then
+			table.clear(originalCollide)
+			stepForce()
+
+			if humanoid then
+				humanoid:UnequipTools()
+			end
+
+			table.insert(connections, character.DescendantAdded:Connect(onDescendantAdded))
+
+			local backpack = player:FindFirstChildOfClass("Backpack")
+			if backpack then
+				for _, t in ipairs(backpack:GetChildren()) do
+					if t:IsA("Tool") then
+						enforceNoTools(t)
+					end
+				end
+				table.insert(connections, backpack.ChildAdded:Connect(function(child)
+					if noclipOn and child:IsA("Tool") then
+						enforceNoTools(child)
+					end
+				end))
+			end
+
+			table.insert(connections, character.ChildAdded:Connect(function(child)
+				if noclipOn and child:IsA("Tool") then
+					enforceNoTools(child)
+				end
+			end))
+
+			steppedConn = RunService.Stepped:Connect(stepForce)
+			table.insert(connections, steppedConn)
+		else
+			if steppedConn and steppedConn.Connected then
+				steppedConn:Disconnect()
+			end
+			for part, orig in pairs(originalCollide) do
+				if part and part.Parent and part:IsA("BasePart") then
+					part.CanCollide = orig
+				end
+			end
+			table.clear(originalCollide)
+			disconnectAll(connections)
+		end
+	end
+
+	local inputConn = UserInputService.InputBegan:Connect(function(input, gpe)
+		if gpe or isTyping() then return end
+		if input.KeyCode == Enum.KeyCode.N then
+			setNoclip(not noclipOn)
+		end
+	end)
+	table.insert(connections, inputConn)
+
+	table.insert(connections, character.AncestryChanged:Connect(function(_, parent)
+		if parent == nil then
+			disconnectAll(connections)
+		end
+	end))
+
+	table.insert(connections, humanoid.Died:Connect(function()
+		if noclipOn then
+			setNoclip(false)
+		end
+		disconnectAll(connections)
+	end))
+end
+
+local function bindCharacterHandlers()
+	if player.Character and player.Character.Parent then
+		attachToCharacter(player.Character)
+	end
+	player.CharacterAdded:Connect(function(char)
+		char:WaitForChild("Humanoid", 15)
+		char:WaitForChild("HumanoidRootPart", 15)
+		attachToCharacter(char)
+	end)
+end
+
+bindCharacterHandlers()
